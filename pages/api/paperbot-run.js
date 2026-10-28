@@ -1,7 +1,8 @@
 import { readTable } from '../../lib/paperbot-db';
 import { evaluateEntry, evaluateExit } from '../../lib/paperbot-strategy';
 
-const PAIRS = ['XBTEUR', 'ETHEUR', 'SOLEUR'];
+// Only BTC has an executable bid/ask feed. WTI, GAS and DAX are reference-only until a licensed feed is configured.
+const PAIRS = ['XBTEUR'];
 const API = 'https://api.kraken.com/0/public/';
 
 async function kraken(path) {
@@ -82,7 +83,7 @@ export default async function handler(req, res) {
     })));
     const buy = signals.filter(x => x.signal?.action === 'BUY');
     const sell = signals.filter(x => x.signal?.action === 'SELL');
-    const direction = buy.length >= 2 ? 'BUY' : sell.length >= 2 ? 'SELL' : null;
+    const direction = buy.length >= 1 ? 'BUY' : sell.length >= 1 ? 'SELL' : null;
     if (!direction) return res.status(200).json({
       ok:true, mode:'PAPER', status:'no_consensus',
       buy_signals:buy.length, sell_signals:sell.length
