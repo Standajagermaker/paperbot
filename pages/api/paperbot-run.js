@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     if (position) {
       if (!PAIRS.includes(position.symbol)) throw new Error('Unknown position symbol');
       const q = await quote(position.symbol);
-      const exit = evaluateExit(position, q, Number(account.fee_rate), { takeProfitEur: 2, stopLossEur: 10 });
+      const exit = evaluateExit(position, q, Number(account.fee_rate), { takeProfitEur: Number(account.take_profit_eur ?? 2), stopLossEur: Number(account.stop_loss_eur ?? 10) });
       if (exit.action !== 'CLOSE')
         return res.status(200).json({ok:true,mode:'PAPER',status:'hold',reason:exit.reason});
       const result = await rpc('paperbot_close_position', {
