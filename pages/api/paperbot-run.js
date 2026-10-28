@@ -33,6 +33,25 @@ async function entrySignal(pair) {
   return {...evaluateIndicatorEntry(completed),candleClose};
 }
 
+async function ensureRiskSettings(account) {
+  const targetTakeProfit = 5, targetStopLoss = 5;
+  if (Number(account.take_profit_eur) === targetTakeProfit &&
+      Number(account.stop_loss_eur) === targetStopLoss) return account;
+  const url = new URL('/rest/v1/paperbot_accounts',process.env.SUPABASE_URL);
+  url.searchParams.set('id','eq.'+account.id);
+  const key=process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const r=await fetch(url,{
+    method:'PATCH',
+    headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json',Prefer:'return=representation'},
+    body:JSON.stringify({take_profit_eur:targetTakeProfit,stop_loss_eur:targetStopLoss}),
+    cache:'no-store'
+  });
+  if(!r.ok)throw new Error('Risk settings update failed ('+r.status+')');
+  const rows=await r.json();
+  if(rows.length!==1)throw new Error('Risk settings update did not affect exactly one account');
+  return rows[0];
+}
+
 async function rpc(name, payload) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -57,8 +76,9 @@ export default async function handler(req, res) {
     return res.status(401).json({ok:false,error:'Unauthorized'});
   try {
     const accounts = await readTable('paperbot_accounts', 'select=*&name=eq.main&limit=1');
-    const account = accounts[0];
+    let account = accounts[0];
     if (!account) return res.status(404).json({ok:false,error:'Account main not found'});
+    account = await ensureRiskSettings(account);
     if (!account.auto_enabled)
       return res.status(200).json({ok:true,mode:'PAPER',status:'paused',reason:'auto_enabled_false'});
     const positions = await readTable('paperbot_positions',
@@ -113,6 +133,19 @@ export default async function handler(req, res) {
     candidates.sort((a,b) => Math.abs(b.signal.movePct) - Math.abs(a.signal.movePct));
     const chosen = candidates[0];
     const q = await quote(chosen.pair);
+    // Conservative heuristic: 5-minute potential range from ATR, not a price forecast.
+    // The range must cover two trading fees, executable spread, and target net profit.
+    const entryPrice = direction === 'BUY' ? q.ask : q.bid;
+    const spreadPct = (q.ask - q.bid) / ((q.ask + q.bid) / 2) * 100;
+    const feePct = Number(account.fee_rate) * 200;
+    const targetPct = Number(account.take_profit_eur) / (Number(account.cash_balance) * Number(account.allocation_pct) / 100) * 100;
+    const estimatedRangePct = chosen.signal.atrPct * Math.sqrt(5);
+    const requiredPct = feePct + spreadPct + targetPct;
+    if (!Number.isFinite(estimatedRangePct) || !Number.isFinite(requiredPct) || estimatedRangePct < requiredPct)
+      return res.status(200).json({ok:true,mode:'PAPER',status:'cost_filter',
+        reason:'estimated_volatility_below_fees_spread_and_target',
+        estimated_range_pct:estimatedRangePct,required_pct:requiredPct,
+        fee_pct:feePct,spread_pct:spreadPct,target_pct:targetPct});
     const side = direction === 'BUY' ? 'LONG' : 'SHORT';
     const result = await rpc('paperbot_open_position', {
       p_account_id:account.id,
