@@ -1,5 +1,5 @@
 import { readTable } from '../../lib/paperbot-db';
-import { evaluateEntry, evaluateExit } from '../../lib/paperbot-strategy';
+import { evaluateIndicatorEntry, evaluateExit } from '../../lib/paperbot-strategy';
 
 // Only BTC has an executable bid/ask feed. WTI, GAS and DAX are reference-only until a licensed feed is configured.
 const PAIRS = ['XBTEUR'];
@@ -24,12 +24,13 @@ async function quote(pair) {
 
 async function entrySignal(pair) {
   const data = await kraken('OHLC?pair=' + encodeURIComponent(pair) + '&interval=1');
-  if (!Array.isArray(data) || data.length < 3) return null;
-  const previous = data[data.length - 3], current = data[data.length - 2];
-  const candleClose = new Date((Number(current[0]) + 60) * 1000).toISOString();
-  return { ...evaluateEntry({last:Number(previous[4])}, {
-    last:Number(current[4]), timestamp:candleClose
-  }), candleClose };
+  if (!Array.isArray(data) || data.length < 36) return {action:'HOLD',reason:'insufficient_candles'};
+  const completed=data.slice(0,-1).map(x=>({
+    time:Number(x[0]),open:Number(x[1]),high:Number(x[2]),low:Number(x[3]),close:Number(x[4])
+  }));
+  const current=completed[completed.length-1];
+  const candleClose=new Date((current.time+60)*1000).toISOString();
+  return {...evaluateIndicatorEntry(completed),candleClose};
 }
 
 async function rpc(name, payload) {
