@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     if (position) {
       if (!PAIRS.includes(position.symbol)) throw new Error('Unknown position symbol');
       const q = await quote(position.symbol);
-      const exit = evaluateExit(position, q, Number(account.fee_rate));
+      const exit = evaluateExit(position, q, Number(account.fee_rate), { takeProfitEur: 2, stopLossEur: 10 });
       if (exit.action !== 'CLOSE')
         return res.status(200).json({ok:true,mode:'PAPER',status:'hold',reason:exit.reason});
       const result = await rpc('paperbot_close_position', {
@@ -73,20 +73,32 @@ export default async function handler(req, res) {
       });
       return res.status(200).json({ok:true,mode:'PAPER',status:'close',result});
     }
-    for (const pair of PAIRS) {
-      const signal = await entrySignal(pair);
-      if (!signal || !['BUY','SELL'].includes(signal.action)) continue;
-      const q = await quote(pair);
-      const side = signal.action === 'BUY' ? 'LONG' : 'SHORT';
-      const result = await rpc('paperbot_open_position', {
-        p_account_id:account.id,
-        p_run_key:'open:' + pair + ':' + signal.candleClose,
-        p_symbol:pair,
-        p_side:side,
-        p_price:side === 'LONG' ? q.ask : q.bid
-      });
-      return res.status(200).json({ok:true,mode:'PAPER',status:'open_attempt',result});
-    }
+    const signals = await Promise.all(PAIRS.map(async pair => ({
+      pair, signal: await entrySignal(pair)
+    })));
+    const buy = signals.filter(x => x.signal?.action === 'BUY');
+    const sell = signals.filter(x => x.signal?.action === 'SELL');
+    const direction = buy.length >= 2 ? 'BUY' : sell.length >= 2 ? 'SELL' : null;
+    if (!direction) return res.status(200).json({
+      ok:true, mode:'PAPER', status:'no_consensus',
+      buy_signals:buy.length, sell_signals:sell.length
+    });
+    const candidates = direction === 'BUY' ? buy : sell;
+    candidates.sort((a,b) => Math.abs(b.signal.movePct) - Math.abs(a.signal.movePct));
+    const chosen = candidates[0];
+    const q = await quote(chosen.pair);
+    const side = direction === 'BUY' ? 'LONG' : 'SHORT';
+    const result = await rpc('paperbot_open_position', {
+      p_account_id:account.id,
+      p_run_key:'open:' + chosen.pair + ':' + chosen.signal.candleClose,
+      p_symbol:chosen.pair,
+      p_side:side,
+      p_price:side === 'LONG' ? q.ask : q.bid
+    });
+    return res.status(200).json({
+      ok:true, mode:'PAPER', status:'open_attempt',
+      direction, consensus:candidates.length, symbol:chosen.pair, result
+    });
     return res.status(200).json({ok:true,mode:'PAPER',status:'no_signal'});
   } catch {
     return res.status(502).json({ok:false,error:'Paper trading cycle failed'});
