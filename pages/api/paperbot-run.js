@@ -9,7 +9,9 @@ async function kraken(path) {
   if (!r.ok) throw new Error('Market HTTP error');
   const j = await r.json();
   if (j.error?.length) throw new Error('Market API error');
-  return Object.values(j.result)[0];
+  const data = Object.entries(j.result || {}).find(([key]) => key !== 'last')?.[1];
+  if (!data) throw new Error('Missing Kraken market data');
+  return data;
 }
 
 async function quote(pair) {
@@ -40,7 +42,9 @@ async function rpc(name, payload) {
     body:JSON.stringify(payload), cache:'no-store'
   });
   if (!r.ok) throw new Error('Database RPC failed (' + r.status + ')');
-  return r.json();
+  const result = await r.json();
+  if (!result || result.ok !== true) throw new Error('Database RPC rejected operation');
+  return result;
 }
 
 export default async function handler(req, res) {
@@ -99,7 +103,6 @@ export default async function handler(req, res) {
       ok:true, mode:'PAPER', status:'open_attempt',
       direction, consensus:candidates.length, symbol:chosen.pair, result
     });
-    return res.status(200).json({ok:true,mode:'PAPER',status:'no_signal'});
   } catch {
     return res.status(502).json({ok:false,error:'Paper trading cycle failed'});
   }
