@@ -86,7 +86,8 @@ export default async function handler(req, res) {
     const direction = buy.length >= 1 ? 'BUY' : sell.length >= 1 ? 'SELL' : null;
     if (!direction) return res.status(200).json({
       ok:true, mode:'PAPER', status:'no_consensus',
-      buy_signals:buy.length, sell_signals:sell.length
+      buy_signals:buy.length, sell_signals:sell.length,
+      signals:signals.map(x=>({symbol:x.pair,action:x.signal?.action||'NONE',reason:x.signal?.reason||'no_signal',move_pct:x.signal?.movePct??null,candle_close:x.signal?.candleClose||null}))
     });
     const candidates = direction === 'BUY' ? buy : sell;
     candidates.sort((a,b) => Math.abs(b.signal.movePct) - Math.abs(a.signal.movePct));
@@ -104,7 +105,8 @@ export default async function handler(req, res) {
       ok:true, mode:'PAPER', status:'open_attempt',
       direction, consensus:candidates.length, symbol:chosen.pair, result
     });
-  } catch {
-    return res.status(502).json({ok:false,error:'Paper trading cycle failed'});
+  } catch (e) {
+    console.error('PaperBot cycle error:',e);
+    return res.status(502).json({ok:false,error:'Paper trading cycle failed',detail:String(e.message||e)});
   }
 }
