@@ -1,0 +1,36 @@
+
+name: PaperBot automatic cycle
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: paperbot-cycle
+  cancel-in-progress: false
+
+jobs:
+  paperbot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Execute PaperBot
+        env:
+          TOKEN: ${{ secrets.PAPERBOT_RUN_SECRET }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "Missing GitHub secret"
+            exit 1
+          fi
+
+          curl --fail-with-body \
+            --silent --show-error \
+            --max-time 90 \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            https://paperbot-delta.vercel.app/api/paperbot-run
