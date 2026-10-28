@@ -78,6 +78,25 @@ export default async function handler(req, res) {
       });
       return res.status(200).json({ok:true,mode:'PAPER',status:'close',result});
     }
+    // One-time explicitly requested PAPER bootstrap: first scheduled cycle only.
+    // Never repeat after any recorded position or bootstrap run.
+    const [priorPositions, bootstrapRuns] = await Promise.all([
+      readTable('paperbot_positions','select=id&account_id=eq.' + encodeURIComponent(account.id) + '&limit=1'),
+      readTable('paperbot_runs','select=id&account_id=eq.' + encodeURIComponent(account.id) + '&run_key=eq.bootstrap-first-btc-v1&limit=1')
+    ]);
+    if (priorPositions.length === 0 && bootstrapRuns.length === 0) {
+      const q = await quote('XBTEUR');
+      const result = await rpc('paperbot_open_position', {
+        p_account_id:account.id,
+        p_run_key:'bootstrap-first-btc-v1',
+        p_symbol:'XBTEUR',
+        p_side:'LONG',
+        p_price:q.ask
+      });
+      return res.status(200).json({ok:true,mode:'PAPER',status:'bootstrap_open',
+        reason:'one_time_user_requested_first_trade_without_momentum_signal',
+        symbol:'XBTEUR',side:'LONG',result});
+    }
     const signals = await Promise.all(PAIRS.map(async pair => ({
       pair, signal: await entrySignal(pair)
     })));
