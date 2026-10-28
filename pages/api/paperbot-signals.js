@@ -17,7 +17,7 @@ export default async function handler(req, res) {
       const curr = rows[rows.length - 2];
       if (!prev || !curr) return { pair, action: 'HOLD', reason: 'insufficient_completed_candles' };
       const previous = { last: Number(prev[4]) };
-      const current = { last: Number(curr[4]), timestamp: new Date(Number(curr[0]) * 1000).toISOString() };
+      const current = { last: Number(curr[4]), timestamp: new Date((Number(curr[0]) + 60) * 1000).toISOString() };
       const result = evaluateEntry(previous, current);
       return { pair, ...result, candle_time: current.timestamp };
     }));
