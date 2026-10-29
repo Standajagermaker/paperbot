@@ -6,6 +6,7 @@ export default async function handler(req,res){
  return res.status(401).json({ok:false,error:'Unauthorized'});
  try{
  const {account,positions}=await v2State();
+ if(account.auto_enabled!==true)return res.status(200).json({ok:true,mode:'PAPER_V2',status:'paused',reason:'auto_disabled_by_admin'});
  const open=positions.filter(p=>!p.closed_at);
  const q=await marketQuote('XBTEUR');
  const actions=[];
