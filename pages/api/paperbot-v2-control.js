@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {isAdmin,sameOrigin} from '../../lib/paperbot-admin';
 import {v2State,v2Rpc,marketQuote} from '../../lib/paperbot-v2';
 export default async function handler(req,res){
@@ -23,7 +24,7 @@ export default async function handler(req,res){
   const margin=Math.min(Number(account.max_position_eur),Number(account.max_exposure_eur)-exposure,Number(account.cash_balance)/(1+Number(account.fee_rate)));
   if(margin<10)return res.status(409).json({ok:false,error:'Insufficient free exposure/cash'});
   const price=req.body.side==='LONG'?q.ask:q.bid;
-  const result=await v2Rpc('paperbot_v2_open',{p_key:'manual:'+crypto.randomUUID(),p_symbol:'XBTEUR',p_side:req.body.side,p_price:price,p_margin:Math.floor(margin*100)/100});
+  const result=await v2Rpc('paperbot_v2_open',{p_key:'manual:'+randomUUID(),p_symbol:'XBTEUR',p_side:req.body.side,p_price:price,p_margin:Math.floor(margin*100)/100});
   return res.status(result.ok?200:409).json({ok:result.ok,result,price});
  }
  if(action==='close'){
